@@ -1,6 +1,12 @@
-TOKEN = "8791127375:AAH8isLmQDMIvBiUbkRxYFsbXDU4f9s3DOM"  # Замени на токен от BotFather
+import os
+from datetime import datetime
+import pytz
 
-# Доходность услуг (категория -> долларов в день)
+# Основные настройки через переменные окружения
+TOKEN = os.getenv("TOKEN")                    # ← будет браться из Bothost
+ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
+
+# Доходность услуг
 DAILY_INCOME = {
     1: 3.4,
     2: 2.0,
@@ -8,10 +14,8 @@ DAILY_INCOME = {
     4: 2.8
 }
 
-PENALTY = 2.0           # штраф за пропуск дня
-SERVICE_DAYS = 30       # длительность услуги в днях
-ADMIN_ID = 7762906140    # твой Telegram ID
+PENALTY = 2.0
+SERVICE_DAYS = 30
 
-# Часовой пояс (Москва)
-import pytz
+# Часовой пояс
 TIMEZONE = pytz.timezone('Europe/Moscow')

@@ -1,13 +1,15 @@
 import asyncio
+import os
 from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, FSInputFile
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from config import TOKEN, DAILY_INCOME, SERVICE_DAYS, TIMEZONE, ADMIN_ID
+from config import TOKEN, DAILY_INCOME, PENALTY, SERVICE_DAYS, TIMEZONE, ADMIN_ID
 from database import init_db, get_user, add_user, update_checkin, add_earnings, deactivate_user
 from keyboards import main_menu, category_keyboard
 from utils import apply_penalties_and_update, auto_apply_daily_penalties
@@ -17,15 +19,33 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 
-BANNER_PATH = "banners/workk.jpg"   # укажи правильный путь или удали файл
+BANNER_PATH = "banners/banner.jpg"
 
 
 async def send_with_banner(chat_id: int, text: str, reply_markup=None):
+    """Отправляет сообщение с баннером. Если баннер не найден — отправляет только текст."""
     try:
-        banner = FSInputFile(BANNER_PATH)
-        await bot.send_photo(chat_id, photo=banner, caption=text, reply_markup=reply_markup)
-    except Exception:
-        await bot.send_message(chat_id, text, reply_markup=reply_markup)
+        full_path = os.path.join(os.getcwd(), BANNER_PATH)
+        
+        if os.path.exists(full_path):
+            banner = FSInputFile(full_path)
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=banner,
+                caption=text,
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+        else:
+            await bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode="HTML")
+            print(f"⚠️ Баннер не найден: {full_path}")
+            
+    except Exception as e:
+        print(f"❌ Ошибка отправки баннера: {e}")
+        try:
+            await bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode="HTML")
+        except:
+            pass
 
 
 def calculate_remaining(user) -> int:
@@ -43,12 +63,14 @@ async def cmd_start(message: Message):
 
     if user and user["active"]:
         remaining = calculate_remaining(user)
-        text = (f"👋 С возвращением!\n"
-                f"Твоя активная услуга: категория {user['category']}\n"
-                f"Осталось дней: {remaining}")
+        text = (
+            f"👋 <b>С возвращением!</b>\n\n"
+            f"Активная услуга: категория <b>{user['category']}</b>\n"
+            f"Осталось дней: <b>{remaining}</b>"
+        )
         await send_with_banner(user_id, text, reply_markup=main_menu())
     else:
-        text = "🌟 Выбери категорию услуги (срок 30 дней):"
+        text = "🌟 <b>Выбери категорию услуги</b> (срок 30 дней):"
         await send_with_banner(user_id, text, reply_markup=category_keyboard())
 
 
@@ -61,20 +83,23 @@ async def select_category(callback: CallbackQuery):
     add_user(user_id, username, cat_num)
     daily = DAILY_INCOME[cat_num]
 
-    text = (f"✅ Ты выбрал категорию {cat_num}\n"
-            f"Доход в день: ${daily}\n"
-            f"Срок: 30 дней\n\n"
-            f"Нажимай «РАБОТАЮ» каждый день до полуночи по Москве!")
+    text = (
+        f"✅ <b>Услуга активирована!</b>\n\n"
+        f"Категория: <b>{cat_num}</b>\n"
+        f"Доход в день: <b>${daily}</b>\n"
+        f"Срок: <b>30 дней</b>\n\n"
+        f"Нажимай кнопку <b>✅ РАБОТАЮ</b> каждый день до 23:59 по Москве!"
+    )
 
     await send_with_banner(user_id, text, reply_markup=main_menu())
-    await callback.answer()
+    await callback.answer("Услуга успешно активирована!")
 
 
 @dp.callback_query(lambda c: c.data == "profile")
 async def show_profile(callback: CallbackQuery):
     user = get_user(callback.from_user.id)
     if not user or not user["active"]:
-        await callback.answer("У тебя нет активной услуги. Напиши /start")
+        await callback.answer("У тебя нет активной услуги.", show_alert=True)
         return
 
     cat = user["category"]
@@ -88,30 +113,93 @@ async def show_profile(callback: CallbackQuery):
     midnight = (now_msk + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     hours_left = max(0, (midnight - now_msk).total_seconds() / 3600)
 
-    text = (f"📊 *Твой профиль*\n\n"
-            f"Услуга: категория {cat}\n"
-            f"Доход в день: ${income}\n"
-            f"Осталось дней: {remaining}\n"
-            f"💰 Начислено: ${earned:.2f}\n"
-            f"⚠️ Штрафы: ${penalty:.2f}\n"
-            f"💵 Чистый доход: ${net:.2f}\n\n"
-            f"🕒 Московское время: {now_msk.strftime('%H:%M:%S')}\n"
-            f"⏳ До полуночи: {hours_left:.1f} ч.")
+    text = (
+        f"📊 <b>Твой профиль</b>\n\n"
+        f"Услуга: категория <b>{cat}</b>\n"
+        f"Доход в день: <b>${income}</b>\n"
+        f"Осталось дней: <b>{remaining}</b>\n\n"
+        f"💰 Начислено: <b>${earned:.2f}</b>\n"
+        f"⚠️ Штрафы: <b>${penalty:.2f}</b>\n"
+        f"💵 Чистый доход: <b>${net:.2f}</b>\n\n"
+        f"🕒 Московское время: <code>{now_msk.strftime('%H:%M:%S')}</code>\n"
+        f"⏳ До полуночи: <b>{hours_left:.1f} ч.</b>"
+    )
 
     await send_with_banner(callback.from_user.id, text, reply_markup=main_menu())
-    await callback.answer("parse_mode", "Markdown")
+    await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data == "my_service")
-async def my_service(callback: CallbackQuery):
+@dp.callback_query(lambda c: c.data == "balance")
+async def show_balance(callback: CallbackQuery):
     user = get_user(callback.from_user.id)
     if not user or not user["active"]:
-        await callback.answer("Нет активной услуги")
+        await callback.answer("Нет активной услуги.", show_alert=True)
         return
 
-    text = (f"📟 Твоя услуга: категория {user['category']}\n"
-            f"Доход в день: ${DAILY_INCOME[user['category']]}\n"
-            f"Осталось дней: {calculate_remaining(user)}")
+    earned = user["total_earned"]
+    penalty = user["total_penalty"]
+    net = earned - penalty
+    daily = DAILY_INCOME[user["category"]]
+
+    text = (
+        f"💰 <b>Твой баланс</b>\n\n"
+        f"Начислено за работу: <b>${earned:.2f}</b>\n"
+        f"Штрафы: <b>-${penalty:.2f}</b>\n"
+        f"──────────────────\n"
+        f"<b>Чистый доход:</b> <b>${net:.2f}</b>\n\n"
+        f"Доход в день: ${daily}"
+    )
+
+    await send_with_banner(callback.from_user.id, text, reply_markup=main_menu())
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "stats")
+async def show_stats(callback: CallbackQuery):
+    user = get_user(callback.from_user.id)
+    if not user or not user["active"]:
+        await callback.answer("Нет активной услуги.", show_alert=True)
+        return
+
+    remaining = calculate_remaining(user)
+    days_worked = SERVICE_DAYS - remaining
+    progress = int((days_worked / SERVICE_DAYS) * 100)
+
+    text = (
+        f"📅 <b>Статистика услуги</b>\n\n"
+        f"Отработано дней: <b>{days_worked}</b> из {SERVICE_DAYS}\n"
+        f"Осталось: <b>{remaining}</b> дней\n"
+        f"Прогресс: <b>{progress}%</b>\n\n"
+        f"Продолжай отмечаться ежедневно!"
+    )
+
+    await send_with_banner(callback.from_user.id, text, reply_markup=main_menu())
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "help")
+async def show_help(callback: CallbackQuery):
+    text = (
+        f"ℹ️ <b>Как пользоваться ботом</b>\n\n"
+        f"✅ Каждый день нажимай <b>«РАБОТАЮ»</b> до 23:59 по Москве\n"
+        f"⚠️ За пропуск дня — штраф ${PENALTY}\n"
+        f"⏳ Услуга длится ровно 30 дней\n"
+        f"💵 Чем чаще отмечаешься — тем выше чистый доход\n\n"
+        f"После окончания услуги напиши /start для выбора новой."
+    )
+
+    await send_with_banner(callback.from_user.id, text, reply_markup=main_menu())
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "support")
+async def show_support(callback: CallbackQuery):
+    text = (
+        f"🛠 <b>Поддержка</b>\n\n"
+        f"По всем вопросам и проблемам пиши администратору:\n\n"
+        f"👤 @himeradied   ← замени на свой username\n\n"
+        f"Опиши проблему максимально подробно."
+    )
 
     await send_with_banner(callback.from_user.id, text, reply_markup=main_menu())
     await callback.answer()
@@ -128,7 +216,7 @@ async def work_today(callback: CallbackQuery):
 
     await apply_penalties_and_update(user_id)
 
-    user = get_user(user_id)  # обновляем данные после штрафов
+    user = get_user(user_id)
     if not user or not user["active"]:
         await callback.answer("Срок услуги истёк. Начни новую через /start", show_alert=True)
         return
@@ -145,7 +233,6 @@ async def work_today(callback: CallbackQuery):
         await callback.answer("Срок услуги истёк.", show_alert=True)
         return
 
-    # Начисляем доход
     income = DAILY_INCOME[user["category"]]
     add_earnings(user_id, income)
     update_checkin(user_id, datetime.now(TIMEZONE).isoformat())
@@ -154,12 +241,12 @@ async def work_today(callback: CallbackQuery):
 
     if remaining <= 0:
         deactivate_user(user_id)
-        text = f"✅ Получено ${income} за сегодня.\n\n🎉 Твой 30-дневный период завершён!"
+        text = f"✅ <b>Отлично!</b> Ты получил <b>${income}</b> за сегодня.\n\n🎉 Твой 30-дневный период завершён!"
     else:
-        text = f"✅ Получено ${income} за сегодня.\nОсталось дней: {remaining}"
+        text = f"✅ Ты получил <b>${income}</b> за сегодня.\nОсталось дней: <b>{remaining}</b>"
 
     await send_with_banner(user_id, text, reply_markup=main_menu())
-    await callback.answer()
+    await callback.answer("Успешно начислено!")
 
 
 @dp.message(Command("admin"))
@@ -176,8 +263,7 @@ async def main():
     init_db()
     scheduler.add_job(auto_apply_daily_penalties, CronTrigger(hour=0, minute=0, timezone=TIMEZONE))
     scheduler.start()
-
-    print("Бот успешно запущен. Планировщик активен (00:00 по Москве)")
+    print("✅ Бот успешно запущен на Bothost.ru")
     await dp.start_polling(bot)
 
 

@@ -19,7 +19,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 
-BANNER_PATH = "banners/banner.jpg"
+BANNER_PATH = "banners/workk.jpg"
 
 
 async def send_with_banner(chat_id: int, text: str, reply_markup=None):
@@ -197,7 +197,7 @@ async def show_support(callback: CallbackQuery):
     text = (
         f"🛠 <b>Поддержка</b>\n\n"
         f"По всем вопросам и проблемам пиши администратору:\n\n"
-        f"👤 @himeradied   ← замени на свой username\n\n"
+        f"👤 @muteel   ← замени на свой username\n\n"
         f"Опиши проблему максимально подробно."
     )
 

@@ -17,7 +17,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 
-BANNER_PATH = "banners/banner.jpg"   # укажи правильный путь или удали файл
+BANNER_PATH = "banners/workk.jpg"   # укажи правильный путь или удали файл
 
 
 async def send_with_banner(chat_id: int, text: str, reply_markup=None):

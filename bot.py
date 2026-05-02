@@ -197,7 +197,7 @@ async def show_support(callback: CallbackQuery):
     text = (
         f"🛠 <b>Поддержка</b>\n\n"
         f"По всем вопросам и проблемам пиши администратору:\n\n"
-        f"👤 @muteel   ← замени на свой username\n\n"
+        f"👤 @muteel"
         f"Опиши проблему максимально подробно."
     )
 
